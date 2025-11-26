@@ -1,0 +1,442 @@
+// This is your Prisma schema file for ngintern
+// Documentation: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  clerkId   String   @unique @map("clerk_id")
+  email     String   @unique
+  firstName String?  @map("first_name")
+  lastName  String?  @map("last_name")
+  role      UserRole @default(CANDIDATE)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  applications    Application[]
+  internProgress  InternProgress[]
+  taskProgress    TaskProgress[]
+  taskSubmissions TaskSubmission[]
+
+  @@index([clerkId])
+  @@index([email])
+  @@map("users")
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?  @db.Text
+  color       String?  // Hex color for UI display
+  icon        String?  // Icon name for UI
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  internships Internship[]
+  skills      Skill[]
+
+  @@index([isActive])
+  @@map("departments")
+}
+
+model SkillCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?  @db.Text
+  color       String?  // Hex color for UI display
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  skills Skill[]
+
+  @@index([isActive])
+  @@map("skill_categories")
+}
+
+model Skill {
+  id           String   @id @default(uuid())
+  name         String
+  description  String?  @db.Text
+  departmentId String   @map("department_id")
+  categoryId   String?  @map("category_id")
+  category     String?  // Keep for backward compatibility
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  department   Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  categoryRef  SkillCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  internships  InternshipSkill[]
+
+  @@unique([name, departmentId])
+  @@index([departmentId])
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("skills")
+}
+
+model InternshipSkill {
+  id           String   @id @default(uuid())
+  internshipId String   @map("internship_id")
+  skillId      String   @map("skill_id")
+  isRequired   Boolean  @default(true) @map("is_required") // Required vs Nice-to-have
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  internship Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  skill      Skill      @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([internshipId, skillId])
+  @@index([internshipId])
+  @@index([skillId])
+  @@map("internship_skills")
+}
+
+model Internship {
+  id           String   @id @default(uuid())
+  title        String
+  departmentId String?  @map("department_id")
+  department   String   // Keep for backward compatibility, will migrate
+  description  String   @db.Text
+  requirements String?  @db.Text
+  location     String?
+  duration     String?
+  isOpen       Boolean  @default(true) @map("is_open")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  departmentRef    Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  applications     Application[]
+  learningPaths    LearningPath[]
+  internshipSkills InternshipSkill[]
+  applicationSteps ApplicationStep[]
+
+  @@index([isOpen])
+  @@index([departmentId])
+  @@map("internships")
+}
+
+// Custom application form steps
+model ApplicationStep {
+  id           String   @id @default(uuid())
+  internshipId String   @map("internship_id")
+  title        String   // Step title (e.g., "Personal Info", "Experience", "Portfolio")
+  description  String?  @db.Text
+  order        Int      @default(0) // Order of the step
+  isRequired   Boolean  @default(true) @map("is_required")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  internship Internship          @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  fields     ApplicationField[]
+
+  @@index([internshipId])
+  @@index([order])
+  @@map("application_steps")
+}
+
+// Field types for application form
+enum FieldType {
+  TEXT           // Single line text input
+  TEXTAREA       // Multi-line text area
+  EMAIL          // Email input
+  PHONE          // Phone number input
+  URL            // URL/Link input
+  SELECT         // Dropdown select
+  MULTI_SELECT   // Multi-select checkboxes
+  RADIO          // Radio button group
+  CHECKBOX       // Single checkbox (yes/no)
+  DATE           // Date picker
+  IMAGE          // Image upload (jpg, png, etc.)
+  PDF            // PDF document upload
+  NUMBER         // Number input
+  HEADING        // Section heading (display only)
+  PARAGRAPH      // Paragraph text (display only)
+}
+
+// Custom fields within each application step
+model ApplicationField {
+  id           String    @id @default(uuid())
+  stepId       String    @map("step_id")
+  type         FieldType @default(TEXT)
+  label        String    // Field label
+  placeholder  String?   // Placeholder text
+  helpText     String?   @map("help_text") @db.Text // Help/description text
+  options      String?   @db.Text // JSON array of options for select/radio/checkbox
+  validation   String?   @db.Text // JSON validation rules (min, max, pattern, etc.)
+  defaultValue String?   @map("default_value") @db.Text
+  order        Int       @default(0)
+  isRequired   Boolean   @default(false) @map("is_required")
+  isActive     Boolean   @default(true) @map("is_active")
+  width        String    @default("full") // "full", "half", "third"
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  step      ApplicationStep      @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  responses ApplicationResponse[]
+
+  @@index([stepId])
+  @@index([order])
+  @@map("application_fields")
+}
+
+// Store user responses to custom fields
+model ApplicationResponse {
+  id            String   @id @default(uuid())
+  applicationId String   @map("application_id")
+  fieldId       String   @map("field_id")
+  value         String?  @db.Text // The response value
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  field ApplicationField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, fieldId])
+  @@index([applicationId])
+  @@index([fieldId])
+  @@map("application_responses")
+}
+
+model Application {
+  id            String            @id @default(uuid())
+  userId        String            @map("user_id")
+  internshipId  String            @map("internship_id")
+  status        ApplicationStatus @default(PENDING)
+  fullName      String            @map("full_name")
+  email         String
+  phone         String
+  education     String            @db.Text
+  experience    String            @db.Text
+  whyInterested String            @map("why_interested") @db.Text
+  availability  String            @db.Text
+  resumeUrl     String?           @map("resume_url")
+  coverLetter   String?           @map("cover_letter") @db.Text
+  linkedinUrl   String?           @map("linkedin_url")
+  githubUrl     String?           @map("github_url")
+  appliedAt     DateTime          @default(now()) @map("applied_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  internship     Internship      @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  internProgress InternProgress?
+
+  @@unique([userId, internshipId]) // Prevent duplicate applications
+  @@index([userId])
+  @@index([internshipId])
+  @@index([status])
+  @@map("applications")
+}
+
+enum UserRole {
+  ADMIN
+  CANDIDATE
+}
+
+enum ApplicationStatus {
+  PENDING
+  REVIEWING
+  ACCEPTED
+  REJECTED
+}
+
+// Learning Path Models
+model LearningPath {
+  id            String   @id @default(uuid())
+  title         String
+  description   String   @db.Text
+  internshipId  String?  @map("internship_id") // Optional: can be assigned to specific internship or used globally
+  isActive      Boolean  @default(true) @map("is_active")
+  estimatedDays Int?     @map("estimated_days") // Estimated completion time in days
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  internship     Internship?      @relation(fields: [internshipId], references: [id], onDelete: SetNull)
+  modules        Module[]
+  internProgress InternProgress[]
+
+  @@index([internshipId])
+  @@index([isActive])
+  @@map("learning_paths")
+}
+
+model Module {
+  id             String   @id @default(uuid())
+  learningPathId String   @map("learning_path_id")
+  title          String
+  description    String   @db.Text
+  orderIndex     Int      @map("order_index") // For ordering modules
+  estimatedHours Int?     @map("estimated_hours")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  learningPath LearningPath @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
+  tasks        Task[]
+
+  @@index([learningPathId])
+  @@index([orderIndex])
+  @@map("modules")
+}
+
+model Task {
+  id               String   @id @default(uuid())
+  moduleId         String   @map("module_id")
+  title            String
+  description      String   @db.Text
+  orderIndex       Int      @map("order_index")
+  isRequired       Boolean  @default(true) @map("is_required")
+  estimatedMinutes Int?     @map("estimated_minutes")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  module                Module                     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  taskProgress          TaskProgress[]
+  contents              TaskContent[]              // Rich content blocks for this task
+  submissionRequirement TaskSubmissionRequirement? // What the intern needs to submit
+  submissions           TaskSubmission[]           // Intern submissions
+
+  @@index([moduleId])
+  @@index([orderIndex])
+  @@map("tasks")
+}
+
+// Rich content blocks for tasks - allows multiple content types per task
+model TaskContent {
+  id          String          @id @default(uuid())
+  taskId      String          @map("task_id")
+  contentType TaskContentType @map("content_type")
+  orderIndex  Int             @map("order_index")
+  
+  // Content fields - used based on contentType
+  textContent String?         @map("text_content") @db.Text  // For TEXT type - markdown supported
+  videoUrl    String?         @map("video_url")              // For VIDEO type - YouTube, Vimeo URLs
+  fileUrl     String?         @map("file_url")               // For PDF, IMAGE types - UploadThing URLs
+  fileName    String?         @map("file_name")              // Original file name
+  linkUrl     String?         @map("link_url")               // For LINK type - external resources
+  linkTitle   String?         @map("link_title")             // Display title for link
+  
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([orderIndex])
+  @@map("task_contents")
+}
+
+enum TaskContentType {
+  TEXT      // Formatted text/markdown content
+  VIDEO     // YouTube/Vimeo embedded video
+  PDF       // PDF document
+  IMAGE     // Image file
+  LINK      // External link/resource
+  CODE      // Code snippet with syntax highlighting
+}
+
+// Submission requirement for a task - defines what the intern must submit
+model TaskSubmissionRequirement {
+  id             String         @id @default(uuid())
+  taskId         String         @unique @map("task_id")
+  submissionType SubmissionType @map("submission_type")
+  instructions   String?        @db.Text // Instructions for what to submit
+  isRequired     Boolean        @default(true) @map("is_required") // Whether submission is required to complete task
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("task_submission_requirements")
+}
+
+// Submission types
+enum SubmissionType {
+  NONE          // No submission required - just reading/watching
+  TEXT_INPUT    // Text answer/response
+  GITHUB_REPO   // GitHub repository link
+  URL_LINK      // Any URL/link
+  FILE_UPLOAD   // File upload (PDF, ZIP, etc.)
+  IMAGE_UPLOAD  // Image upload
+  CODE_SNIPPET  // Code submission
+}
+
+// Intern submissions for tasks
+model TaskSubmission {
+  id          String           @id @default(uuid())
+  userId      String           @map("user_id")
+  taskId      String           @map("task_id")
+  content     String           @db.Text       // The submission content (text, URL, file URL, etc.)
+  fileUrl     String?          @map("file_url") // For file/image uploads
+  fileName    String?          @map("file_name")
+  status      SubmissionStatus @default(PENDING)
+  feedback    String?          @db.Text       // Admin feedback
+  submittedAt DateTime         @default(now()) @map("submitted_at")
+  reviewedAt  DateTime?        @map("reviewed_at")
+  reviewedBy  String?          @map("reviewed_by") // Admin user ID
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, taskId]) // One submission per user per task (can update)
+  @@index([userId])
+  @@index([taskId])
+  @@index([status])
+  @@map("task_submissions")
+}
+
+enum SubmissionStatus {
+  PENDING   // Submitted, awaiting review
+  APPROVED  // Admin approved
+  REJECTED  // Admin rejected, needs resubmission
+  REVISION  // Admin requested changes
+}
+
+model InternProgress {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  learningPathId  String    @map("learning_path_id")
+  applicationId   String?   @unique @map("application_id") // Link to accepted application
+  startedAt       DateTime  @default(now()) @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  currentModuleId String?   @map("current_module_id")
+  progressPercent Int       @default(0) @map("progress_percent") // 0-100
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  learningPath LearningPath @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
+  application  Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, learningPathId]) // One progress record per user per path
+  @@index([userId])
+  @@index([learningPathId])
+  @@index([applicationId])
+  @@map("intern_progress")
+}
+
+model TaskProgress {
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  taskId           String    @map("task_id")
+  isCompleted      Boolean   @default(false) @map("is_completed")
+  completedAt      DateTime? @map("completed_at")
+  notes            String?   @db.Text // Intern can add notes about their learning
+  timeSpentMinutes Int?      @map("time_spent_minutes")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, taskId]) // One progress record per user per task
+  @@index([userId])
+  @@index([taskId])
+  @@index([isCompleted])
+  @@map("task_progress")
+}
