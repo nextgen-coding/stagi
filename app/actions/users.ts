@@ -105,7 +105,19 @@ export async function getUserById(id: string) {
       return { success: false, error: 'User not found' }
     }
     
-    return { success: true, data: user }
+    // Serialize dates to strings for client components
+    const serializedUser = {
+      ...user,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString(),
+      applications: user.applications.map(app => ({
+        ...app,
+        appliedAt: app.appliedAt.toISOString(),
+        updatedAt: app.updatedAt.toISOString()
+      }))
+    }
+    
+    return { success: true, data: serializedUser }
   } catch (error) {
     console.error('Error getting user:', error)
     return { success: false, error: 'Failed to get user' }
@@ -210,7 +222,29 @@ export async function getCurrentUserWithStats() {
       return { success: false, error: 'User not found' }
     }
     
-    return { success: true, data: user }
+    // Serialize dates to strings for client components
+    const serializedUser = {
+      ...user,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString(),
+      applications: user.applications.map(app => ({
+        ...app,
+        appliedAt: app.appliedAt.toISOString(),
+        updatedAt: app.updatedAt.toISOString(),
+        internship: {
+          ...app.internship,
+          createdAt: app.internship.createdAt.toISOString(),
+          updatedAt: app.internship.updatedAt.toISOString(),
+          departmentRef: app.internship.departmentRef ? {
+            ...app.internship.departmentRef,
+            createdAt: app.internship.departmentRef.createdAt.toISOString(),
+            updatedAt: app.internship.departmentRef.updatedAt.toISOString()
+          } : null
+        }
+      }))
+    }
+    
+    return { success: true, data: serializedUser }
   } catch (error) {
     console.error('Error getting user stats:', error)
     return { success: false, error: 'Failed to get user stats' }

@@ -69,7 +69,7 @@ interface UserData {
   firstName: string | null
   lastName: string | null
   role: 'ADMIN' | 'CANDIDATE' | 'INTERN'
-  createdAt: Date
+  createdAt: string
   _count: {
     applications: number
     taskProgress: number
